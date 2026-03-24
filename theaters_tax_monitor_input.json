@@ -1,0 +1,149 @@
+{
+  "notes": [
+    "Starter input file for TX, NC, and FL theaters.",
+    "County is required for NC and FL in this starter version.",
+    "tx_city_key is used by the Texas starter method that matches the Texas city table.",
+    "For production, Texas should move to address-level lookup instead of city-level matching."
+  ],
+  "theaters": [
+    {
+      "name": "Casa Blanca",
+      "address1": "11210 Alamo Ranch Pkwy",
+      "city": "San Antonio",
+      "state": "TX",
+      "zip_code": "78253",
+      "county": "Bexar",
+      "tx_city_key": "San Antonio"
+    },
+    {
+      "name": "Cibolo",
+      "address1": "18124 I-35",
+      "city": "Cibolo",
+      "state": "TX",
+      "zip_code": "78108",
+      "county": "Guadalupe",
+      "tx_city_key": "Cibolo"
+    },
+    {
+      "name": "Embassy",
+      "address1": "13707 Embassy Rd.",
+      "city": "San Antonio",
+      "state": "TX",
+      "zip_code": "78216",
+      "county": "Bexar",
+      "tx_city_key": "San Antonio"
+    },
+    {
+      "name": "Galaxy",
+      "address1": "2938 NE Interstate 410 Loop",
+      "city": "San Antonio",
+      "state": "TX",
+      "zip_code": "78218",
+      "county": "Bexar",
+      "tx_city_key": "San Antonio"
+    },
+    {
+      "name": "Mayan",
+      "address1": "1918 SW Military Dr.",
+      "city": "San Antonio",
+      "state": "TX",
+      "zip_code": "78221",
+      "county": "Bexar",
+      "tx_city_key": "San Antonio"
+    },
+    {
+      "name": "New Braunfels",
+      "address1": "651 S Business Interstate Hwy 35 Ste. 1010",
+      "city": "New Braunfels",
+      "state": "TX",
+      "zip_code": "78130",
+      "county": "Comal",
+      "tx_city_key": "New Braunfels"
+    },
+    {
+      "name": "Northwest",
+      "address1": "7600 I-10",
+      "city": "San Antonio",
+      "state": "TX",
+      "zip_code": "78230",
+      "county": "Bexar",
+      "tx_city_key": "San Antonio"
+    },
+    {
+      "name": "Palladium Imax",
+      "address1": "17703 W Interstate 10 Frontage Rd.",
+      "city": "San Antonio",
+      "state": "TX",
+      "zip_code": "78257",
+      "county": "Bexar",
+      "tx_city_key": "San Antonio"
+    },
+    {
+      "name": "Silverado",
+      "address1": "11505 W Loop 1604 N.",
+      "city": "San Antonio",
+      "state": "TX",
+      "zip_code": "78250",
+      "county": "Bexar",
+      "tx_city_key": "San Antonio"
+    },
+    {
+      "name": "Westlakes",
+      "address1": "1255 SW Loop 410",
+      "city": "San Antonio",
+      "state": "TX",
+      "zip_code": "78227",
+      "county": "Bexar",
+      "tx_city_key": "San Antonio"
+    },
+    {
+      "name": "Grand - Conroe",
+      "address1": "4029 I-45 North",
+      "city": "Conroe",
+      "state": "TX",
+      "zip_code": "77304",
+      "county": "Montgomery",
+      "tx_city_key": "Conroe"
+    },
+    {
+      "name": "Amstar - Four Seasons",
+      "address1": "2700 Vanstory",
+      "city": "Greensboro",
+      "state": "NC",
+      "zip_code": "27407",
+      "county": "Guilford"
+    },
+    {
+      "name": "Amstar - Mooresville",
+      "address1": "206 Norman Station Blvd",
+      "city": "Mooresville",
+      "state": "NC",
+      "zip_code": "28117",
+      "county": "Iredell"
+    },
+    {
+      "name": "Grand - Winston-Salem",
+      "address1": "5601 University Parkway",
+      "city": "Winston-Salem",
+      "state": "NC",
+      "zip_code": "27105",
+      "county": "Forsyth"
+    },
+    {
+      "name": "Amstar - Lake Mary",
+      "address1": "950 Colonial Grand Lane",
+      "city": "Lake Mary",
+      "state": "FL",
+      "zip_code": "32746",
+      "county": "Seminole"
+    },
+    {
+      "name": "Grand - Pier Park",
+      "address1": "500 South Pier Park",
+      "city": "Panama City Beach",
+      "state": "FL",
+      "zip_code": "32413",
+      "county": "Bay"
+    }
+  ]
+}
