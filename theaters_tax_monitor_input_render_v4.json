@@ -1,0 +1,70 @@
+[
+  {
+    "name": "Casa Blanca",
+    "address1": "11210 Alamo Ranch Pkwy",
+    "city": "San Antonio",
+    "state": "TX",
+    "zip_code": "78253"
+  },
+  {
+    "name": "Cibolo",
+    "address1": "18124 I-35",
+    "city": "Cibolo",
+    "state": "TX",
+    "zip_code": "78108"
+  },
+  {
+    "name": "New Braunfels",
+    "address1": "651 S Business Interstate Hwy 35 Ste. 1010",
+    "city": "New Braunfels",
+    "state": "TX",
+    "zip_code": "78130"
+  },
+  {
+    "name": "Grand - Conroe",
+    "address1": "4029 I-45 North",
+    "city": "Conroe",
+    "state": "TX",
+    "zip_code": "77304"
+  },
+  {
+    "name": "Amstar - Four Seasons",
+    "address1": "2700 Vanstory",
+    "city": "Greensboro",
+    "state": "NC",
+    "zip_code": "27407",
+    "county": "Guilford"
+  },
+  {
+    "name": "Amstar - Mooresville",
+    "address1": "206 Norman Station Blvd",
+    "city": "Mooresville",
+    "state": "NC",
+    "zip_code": "28117",
+    "county": "Iredell"
+  },
+  {
+    "name": "Grand - Winston-Salem",
+    "address1": "5601 University Parkway",
+    "city": "Winston-Salem",
+    "state": "NC",
+    "zip_code": "27105",
+    "county": "Forsyth"
+  },
+  {
+    "name": "Amstar - Lake Mary",
+    "address1": "950 Colonial Grand Lane",
+    "city": "Lake Mary",
+    "state": "FL",
+    "zip_code": "32746",
+    "county": "Seminole"
+  },
+  {
+    "name": "Grand - Pier Park",
+    "address1": "500 South Pier Park",
+    "city": "Panama City Beach",
+    "state": "FL",
+    "zip_code": "32413",
+    "county": "Bay"
+  }
+]
