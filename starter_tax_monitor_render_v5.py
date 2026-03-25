@@ -439,8 +439,8 @@ def maybe_send_email(report: Dict[str, Any], dashboard_html: str) -> bool:
     msg.add_alternative(dashboard_html, subtype="html")
 
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
-    if EMAIL_USE_TLS:
-        server.starttls()
+        if EMAIL_USE_TLS:
+            server.starttls()
 
     # Only login if credentials are provided
     if SMTP_USERNAME and SMTP_PASSWORD:
