@@ -1,30 +1,4 @@
 #!/usr/bin/env python3
-"""
-starter_tax_monitor.py
-
-Address-level sales tax monitoring starter for:
-- Texas (TX) via official Texas Comptroller Sales Tax Rate Locator
-- North Carolina (NC) via official NCDOR county rate table
-- Florida (FL) via official Florida county discretionary surtax table + 6% state base
-
-What it does:
-1. Loads theater locations from a JSON file
-2. Looks up the current official tax rate for each TX / NC / FL location
-3. Compares against a saved baseline JSON
-4. Prints alerts when a rate changes
-5. Updates the baseline snapshot
-
-Install:
-    pip install requests beautifulsoup4 pandas lxml
-
-Run:
-    python starter_tax_monitor.py
-
-Optional env vars:
-    TAX_MONITOR_INPUT=theaters_tax_monitor_input_render.json
-    TAX_MONITOR_BASELINE=tax_rate_baseline.json
-"""
-
 from __future__ import annotations
 
 import json
@@ -39,7 +13,7 @@ import requests
 
 INPUT_FILE = Path(os.getenv("TAX_MONITOR_INPUT", "theaters_tax_monitor_input_render.json"))
 BASELINE_FILE = Path(os.getenv("TAX_MONITOR_BASELINE", "tax_rate_baseline.json"))
-TIMEOUT = 45
+TIMEOUT = 60
 
 
 @dataclass
@@ -102,118 +76,139 @@ def save_baseline(data: Dict[str, Dict[str, object]]) -> None:
 
 class TexasProvider:
     """
-    Address-level TX provider.
-
-    Uses the official Texas Comptroller Sales Tax Rate Locator POST endpoint.
-    The web app is JavaScript-driven, but the backing service currently accepts a JSON
-    payload with address components and returns the total rate and jurisdiction details.
-
-    If the endpoint shape changes in the future, the script raises a clear error instead
-    of silently returning the wrong rate.
+    Uses Playwright to automate the official Texas Sales Tax Rate Locator page.
+    This avoids depending on a hidden JSON endpoint that may return HTML or change shape.
     """
 
-    SEARCH_URL = "https://gis.cpa.texas.gov/_api/search"
+    URL = "https://gis.cpa.texas.gov/search/"
 
-    def __init__(self) -> None:
-        self.session = requests.Session()
-        self.session.headers.update(
-            {
-                "Accept": "application/json, text/plain, */*",
-                "Content-Type": "application/json",
-                "Origin": "https://gis.cpa.texas.gov",
-                "Referer": "https://gis.cpa.texas.gov/search/",
-                "User-Agent": "Mozilla/5.0",
-            }
-        )
+    def _extract_rate_from_text(self, text: str) -> Optional[float]:
+        # Prefer explicit labels if present
+        label_patterns = [
+            r"combined\s+rate\s*[:\s]+\s*(\d+\.\d+|\d+)\s*%",
+            r"total\s+rate\s*[:\s]+\s*(\d+\.\d+|\d+)\s*%",
+            r"sales\s+tax\s+rate\s*[:\s]+\s*(\d+\.\d+|\d+)\s*%",
+        ]
+        lowered = text.lower()
 
-    def _payload(self, theater: Theater) -> Dict[str, object]:
+        for pattern in label_patterns:
+            match = re.search(pattern, lowered, re.IGNORECASE)
+            if match:
+                return float(match.group(1)) / 100.0
+
+        # Fallback: collect all percentages and choose the most plausible total rate
+        candidates = []
+        for match in re.finditer(r"(\d+(?:\.\d+)?)\s*%", text):
+            try:
+                pct = float(match.group(1))
+                if 0.0 < pct <= 8.25:
+                    candidates.append(pct / 100.0)
+            except ValueError:
+                continue
+
+        if not candidates:
+            return None
+
+        # Total combined rate should be the highest plausible one
+        return max(candidates)
+
+    def get_rate_for_theater(self, theater: Theater) -> Dict[str, object]:
+        try:
+            from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+        except ImportError as exc:
+            raise RuntimeError(
+                "Playwright is required for TX address-level lookup. "
+                "Install with: pip install playwright && python -m playwright install chromium"
+            ) from exc
+
         street = theater.address1
         if theater.address2:
             street = f"{street} {theater.address2}".strip()
 
-        return {
-            "query": {
-                "searchText": street,
-                "city": theater.city,
-                "state": "TX",
-                "zip": theater.zip_code,
-            },
-            "searchType": "singleAddress",
-        }
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
 
-    def _find_rate(self, obj: Any) -> Optional[float]:
-        if isinstance(obj, dict):
-            for key, value in obj.items():
-                key_lower = str(key).lower()
+            try:
+                page.goto(self.URL, wait_until="networkidle", timeout=TIMEOUT * 1000)
 
-                if key_lower in {
-                    "totalrate",
-                    "combinedrate",
-                    "totalsalestaxrate",
-                    "taxrate",
-                    "rate",
-                }:
-                    try:
-                        rate = normalize_percent_to_decimal(value)
-                        if 0.0 < rate <= 0.2:
-                            return rate
-                    except Exception:
-                        pass
+                # Try likely selectors without assuming exact markup
+                address_candidates = [
+                    'input[placeholder*="Address"]',
+                    'input[aria-label*="Address"]',
+                    'input[name*="address"]',
+                    'input[id*="address"]',
+                ]
+                city_candidates = [
+                    'input[placeholder*="City"]',
+                    'input[aria-label*="City"]',
+                    'input[name*="city"]',
+                    'input[id*="city"]',
+                ]
+                zip_candidates = [
+                    'input[placeholder*="Zip"]',
+                    'input[aria-label*="Zip"]',
+                    'input[name*="zip"]',
+                    'input[id*="zip"]',
+                ]
 
-                found = self._find_rate(value)
-                if found is not None:
-                    return found
+                def fill_first(candidates: List[str], value: str) -> bool:
+                    for selector in candidates:
+                        locator = page.locator(selector)
+                        if locator.count() > 0:
+                            locator.first.fill(value)
+                            return True
+                    return False
 
-        elif isinstance(obj, list):
-            for item in obj:
-                found = self._find_rate(item)
-                if found is not None:
-                    return found
+                ok_address = fill_first(address_candidates, street)
+                ok_city = fill_first(city_candidates, theater.city)
+                ok_zip = fill_first(zip_candidates, theater.zip_code)
 
-        return None
+                if not (ok_address and ok_city and ok_zip):
+                    raise RuntimeError(
+                        f"Could not find one or more TX locator input fields for {theater.name}"
+                    )
 
-    def _find_timestamp(self, obj: Any) -> Optional[str]:
-        if isinstance(obj, dict):
-            for key, value in obj.items():
-                key_lower = str(key).lower()
-                if key_lower in {"timestamp", "asof", "lastupdated", "searchtimestamp"}:
-                    return str(value)
-                found = self._find_timestamp(value)
-                if found:
-                    return found
-        elif isinstance(obj, list):
-            for item in obj:
-                found = self._find_timestamp(item)
-                if found:
-                    return found
-        return None
+                # Click Search or submit
+                search_clicked = False
+                for selector in [
+                    'button:has-text("Search")',
+                    'input[type="submit"]',
+                    'button[type="submit"]',
+                ]:
+                    locator = page.locator(selector)
+                    if locator.count() > 0:
+                        locator.first.click()
+                        search_clicked = True
+                        break
 
-    def get_rate_for_theater(self, theater: Theater) -> Dict[str, object]:
-        payload = self._payload(theater)
-        resp = self.session.post(self.SEARCH_URL, json=payload, timeout=TIMEOUT)
+                if not search_clicked:
+                    page.keyboard.press("Enter")
 
-        if resp.status_code >= 400:
-            raise RuntimeError(
-                f"TX locator request failed for {theater.name}: "
-                f"{resp.status_code} {resp.text[:300]}"
-            )
+                page.wait_for_timeout(4000)
+                page.wait_for_load_state("networkidle", timeout=TIMEOUT * 1000)
 
-        data = resp.json()
-        rate = self._find_rate(data)
-        if rate is None:
-            raise RuntimeError(
-                f"TX locator returned no usable rate for {theater.name}. "
-                f"Response sample: {json.dumps(data)[:500]}"
-            )
+                text = page.locator("body").inner_text(timeout=TIMEOUT * 1000)
+                rate = self._extract_rate_from_text(text)
 
-        return {
-            "theater": theater.name,
-            "state": "TX",
-            "rate": rate,
-            "source": "https://gis.cpa.texas.gov/search/",
-            "method": "TX address-level rate locator",
-            "timestamp": self._find_timestamp(data),
-        }
+                if rate is None:
+                    raise RuntimeError(
+                        f"Could not extract TX rate for {theater.name}. "
+                        f"Page text sample: {text[:800]}"
+                    )
+
+                return {
+                    "theater": theater.name,
+                    "state": "TX",
+                    "rate": rate,
+                    "source": self.URL,
+                    "method": "TX address-level rate locator via browser automation",
+                }
+
+            except PlaywrightTimeout as exc:
+                raise RuntimeError(f"TX locator timed out for {theater.name}") from exc
+            finally:
+                browser.close()
 
 
 class NorthCarolinaProvider:
@@ -244,9 +239,9 @@ class NorthCarolinaProvider:
         rates: Dict[str, float] = {}
 
         for _, row in df.iterrows():
-            county = str(row["county"]).strip()
+            county = str(row["county"]).strip().lower()
             rate = str(row["rate"]).strip().replace("*", "")
-            rates[county.lower()] = normalize_percent_to_decimal(rate)
+            rates[county] = normalize_percent_to_decimal(rate)
 
         self._rates = rates
         return rates
