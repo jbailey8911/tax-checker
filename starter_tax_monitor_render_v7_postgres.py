@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Any
 
 import psycopg2
 import requests
@@ -18,11 +18,11 @@ INPUT_FILE = Path(os.getenv("TAX_MONITOR_INPUT", "theaters_tax_monitor_input_ren
 DASHBOARD_FILE = Path(os.getenv("TAX_MONITOR_DASHBOARD", "tax_monitor_dashboard.html"))
 JSON_REPORT_FILE = Path(os.getenv("TAX_MONITOR_REPORT_JSON", "tax_monitor_report.json"))
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL")
+
 TIMEOUT = 45
 HEADERS = {"User-Agent": "Mozilla/5.0"}
-
-TEAMS_WEBHOOK_URL = os.getenv("TEAMS_WEBHOOK_URL")
-DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 @dataclass
@@ -33,15 +33,16 @@ class Theater:
     state: str
     zip_code: str
     county: Optional[str] = None
+    expected_rate: Optional[float] = None
 
 
 def get_db_connection():
     if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL environment variable is not set.")
+        raise RuntimeError("DATABASE_URL environment variable is not set")
     return psycopg2.connect(DATABASE_URL)
 
 
-def ensure_database_table() -> None:
+def ensure_database_table():
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -56,13 +57,7 @@ def ensure_database_table() -> None:
             )
 
 
-def normalize_rate_for_db(rate: Any) -> Optional[Decimal]:
-    """
-    Store rates as percent values:
-    0.0825 -> 8.2500
-    8.25   -> 8.2500
-    "8.25%" -> 8.2500
-    """
+def normalize_rate_for_db(rate):
     if rate is None:
         return None
 
@@ -74,38 +69,22 @@ def normalize_rate_for_db(rate: Any) -> Optional[Decimal]:
     return value.quantize(Decimal("0.0001"))
 
 
-def db_percent_to_float(rate: Optional[Decimal]) -> Optional[float]:
-    """
-    Convert database percent values back to decimal values for dashboard formatting:
-    8.2500 -> 0.0825
-    """
-    if rate is None:
+def db_percent_to_float(value):
+    if value is None:
         return None
-    return float(rate) / 100.0
+    return float(value) / 100.0
 
 
-def check_and_save_rate(location_name: str, new_rate: Optional[float]) -> Tuple[str, Optional[Decimal], Optional[Decimal]]:
-    """
-    Returns:
-      ("baseline_created", None, new_rate)
-      ("changed", old_rate, new_rate)
-      ("no_change", old_rate, new_rate)
-      ("manual_review", old_rate_or_none, None)
-    """
+def check_and_save_rate(location_name, new_rate):
     new_rate_db = normalize_rate_for_db(new_rate)
 
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT rate FROM tax_rates WHERE location_name = %s",
-                (location_name,),
+                (location_name,)
             )
             row = cur.fetchone()
-            old_rate_db = normalize_rate_for_db(row[0]) if row else None
-
-            # If we couldn't fetch/parse today's rate, do NOT overwrite the stored good rate.
-            if new_rate_db is None:
-                return "manual_review", old_rate_db, None
 
             if row is None:
                 cur.execute(
@@ -113,9 +92,11 @@ def check_and_save_rate(location_name: str, new_rate: Optional[float]) -> Tuple[
                     INSERT INTO tax_rates (location_name, rate, last_checked, last_changed)
                     VALUES (%s, %s, CURRENT_TIMESTAMP, NULL)
                     """,
-                    (location_name, new_rate_db),
+                    (location_name, new_rate_db)
                 )
                 return "baseline_created", None, new_rate_db
+
+            old_rate_db = normalize_rate_for_db(row[0])
 
             if old_rate_db != new_rate_db:
                 cur.execute(
@@ -126,7 +107,7 @@ def check_and_save_rate(location_name: str, new_rate: Optional[float]) -> Tuple[
                         last_changed = CURRENT_TIMESTAMP
                     WHERE location_name = %s
                     """,
-                    (new_rate_db, location_name),
+                    (new_rate_db, location_name)
                 )
                 return "changed", old_rate_db, new_rate_db
 
@@ -136,7 +117,7 @@ def check_and_save_rate(location_name: str, new_rate: Optional[float]) -> Tuple[
                 SET last_checked = CURRENT_TIMESTAMP
                 WHERE location_name = %s
                 """,
-                (location_name,),
+                (location_name,)
             )
             return "no_change", old_rate_db, new_rate_db
 
@@ -160,12 +141,6 @@ def pct(rate: Optional[float]) -> str:
     return f"{rate:.4%}"
 
 
-def pct_db(rate: Optional[Decimal]) -> str:
-    if rate is None:
-        return "—"
-    return f"{rate:.4f}%"
-
-
 def fetch_text(url: str) -> str:
     r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
     r.raise_for_status()
@@ -182,8 +157,8 @@ def load_theaters() -> List[Theater]:
             state=i["state"].upper(),
             zip_code=canonical_zip(i["zip_code"]),
             county=i.get("county"),
-        )
-        for i in data
+            expected_rate=i.get("expected_rate")
+        ) for i in data
     ]
 
 
@@ -199,7 +174,7 @@ class TexasProvider:
 
         exact_pattern = re.compile(
             rf"(?m)^\s*{re.escape(city)}\s+\d+\s+\.\d+\s+(\.\d+)\s*$",
-            re.IGNORECASE,
+            re.IGNORECASE
         )
         m = exact_pattern.search(self._text)
         if m:
@@ -207,7 +182,7 @@ class TexasProvider:
 
         variant_pattern = re.compile(
             rf"(?m)^\s*{re.escape(city)}(?:\s+\([^)]+\)|/[^\n]+)?\s+\d+\s+\.\d+\s+(\.\d+)\s*$",
-            re.IGNORECASE,
+            re.IGNORECASE
         )
         matches = [float(x.group(1)) for x in variant_pattern.finditer(self._text)]
         if matches:
@@ -230,7 +205,7 @@ class NCProvider:
 
         pattern = re.compile(
             rf"(?m)^\s*{re.escape(county)}\s+(\d+(?:\.\d+)?)%[*]?\s*$",
-            re.IGNORECASE,
+            re.IGNORECASE
         )
         m = pattern.search(self._text)
         if not m:
@@ -270,7 +245,7 @@ def build_dashboard(report: Dict[str, Any]) -> str:
 
     rows = []
     for item in report["locations"]:
-        status = "Review" if item.get("manual_review_required") else item.get("status", "OK")
+        status = "Review" if item.get("manual_review_required") else "OK"
         cls = "review" if item.get("manual_review_required") else "ok"
         rows.append(
             f"<tr class='{cls}'>"
@@ -337,9 +312,6 @@ def send_teams_message(report: Dict[str, Any]) -> bool:
 
     summary_lines = []
 
-    if report.get("baselines_created", 0):
-        summary_lines.append(f"Baselines created: {report['baselines_created']}")
-
     if report["changes"]:
         summary_lines.append("**Changes detected:**")
         summary_lines.extend([f"- {x}" for x in report["changes"][:10]])
@@ -373,7 +345,7 @@ def send_teams_message(report: Dict[str, Any]) -> bool:
         TEAMS_WEBHOOK_URL,
         json=payload,
         headers={"Content-Type": "application/json"},
-        timeout=30,
+        timeout=30
     )
     r.raise_for_status()
     return True
@@ -396,35 +368,53 @@ def monitor():
     for t in theaters:
         note = ""
         manual_review_required = False
+        rate = None
 
         if t.state == "TX":
             rate = tx.get_rate(t.city)
             if rate is None:
                 manual_review_required = True
                 note = f"Could not confidently match city '{t.city}' in TX city table"
+
         elif t.state == "NC":
             rate = nc.get_rate(t.county or "")
             if rate is None:
                 manual_review_required = True
                 note = f"County not found: {t.county}"
+
         elif t.state == "FL":
             rate = fl.get_rate(t.county or "")
             if rate is None:
                 manual_review_required = True
                 note = f"County not found: {t.county}"
+
         else:
-            rate = None
-            manual_review_required = True
-            note = f"Unsupported state: {t.state}"
+            if t.expected_rate is not None:
+                rate = t.expected_rate / 100 if t.expected_rate > 1 else t.expected_rate
+                note = "Using expected_rate from input file"
+                manual_review_required = False
+            else:
+                manual_review_required = True
+                note = f"Unsupported state: {t.state}"
 
-        db_status, old_rate_db, new_rate_db = check_and_save_rate(t.name, rate)
-        previous_rate_float = db_percent_to_float(old_rate_db)
-        current_rate_float = db_percent_to_float(new_rate_db) if new_rate_db is not None else rate
+        previous_rate_float = None
+        current_rate_float = rate
 
-        if db_status == "baseline_created":
-            baselines_created += 1
-        elif db_status == "changed":
-            changes.append(f"{t.name}: {pct_db(old_rate_db)} -> {pct_db(new_rate_db)}")
+        if manual_review_required or rate is None:
+            manual_reviews.append(f"[REVIEW] {t.name} ({t.state}): {note}")
+        else:
+            db_status, old_rate_db, new_rate_db = check_and_save_rate(t.name, rate)
+
+            previous_rate_float = db_percent_to_float(old_rate_db)
+            current_rate_float = db_percent_to_float(new_rate_db)
+
+            if db_status == "baseline_created":
+                baselines_created += 1
+
+            elif db_status == "changed":
+                changes.append(
+                    f"{t.name}: {pct(previous_rate_float)} -> {pct(current_rate_float)}"
+                )
 
         location_results.append({
             "theater": t.name,
@@ -433,13 +423,9 @@ def monitor():
             "county": t.county or "",
             "previous_rate": previous_rate_float,
             "rate": current_rate_float,
-            "status": db_status,
             "manual_review_required": manual_review_required,
             "note": note,
         })
-
-        if manual_review_required:
-            manual_reviews.append(f"[REVIEW] {t.name} ({t.state}): {note}")
 
     report = {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
@@ -461,8 +447,7 @@ def monitor():
     else:
         print("No tax-rate changes detected.")
 
-    if baselines_created:
-        print(f"\nBaselines created: {baselines_created}")
+    print(f"Baselines created: {baselines_created}")
 
     if manual_reviews:
         print("\nMANUAL REVIEW ITEMS")
